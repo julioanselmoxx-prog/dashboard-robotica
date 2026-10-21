@@ -10,7 +10,7 @@ import config
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS HIGH-TECH UI
 # ==========================================
 st.set_page_config(
-    page_title="EQUANS Perú - Centro de Control de Robótica",
+    page_title="EQ Perú - Centro de Control de Robótica",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -170,15 +170,12 @@ class EnvironmentalDataService:
 
     @staticmethod
     def get_noaa_kp_forecast_3days():
-        """Obtiene o simula el pronóstico Kp de NOAA a 3 días"""
         try:
             url = "https://services.swpc.noaa.gov/text/3-day-forecast.txt"
             res = requests.get(url, timeout=3)
-            # Retorna estructura limpia si responde la NOAA
         except Exception:
             pass
         
-        # Estructura estandarizada de 3 días a futuro
         return pd.DataFrame([
             {"Día": "Hoy (Día 1)", "Kp_Max": 2.7, "Estado_GPS": "Óptimo", "Evaluación": "Seguro"},
             {"Día": "Mañana (Día 2)", "Kp_Max": 3.2, "Estado_GPS": "Óptimo", "Evaluación": "Seguro"},
@@ -210,7 +207,6 @@ class EnvironmentalDataService:
 
     @staticmethod
     def get_weather_forecast_7days(lat, lon):
-        """Obtiene el pronóstico meteorológico día a día a 7 días vista de Open-Meteo"""
         try:
             url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum&timezone=auto"
             res = requests.get(url, timeout=3)
@@ -229,7 +225,6 @@ class EnvironmentalDataService:
         except Exception:
             pass
 
-        # Resguardo de 7 días
         fechas = pd.date_range(end=pd.Timestamp.today() + pd.Timedelta(days=6), periods=7).strftime('%Y-%m-%d')
         return pd.DataFrame({
             "Fecha": fechas,
@@ -246,7 +241,7 @@ class EnvironmentalDataService:
 # 3. INTERFAZ Y BARRA LATERAL (SIDEBAR)
 # ==========================================
 with st.sidebar:
-    st.markdown("## ⚡ **EQUANS**")
+    st.markdown("## ⚡ **EQ**")
     st.caption("SYSTEM OPERATIVE STATUS: ONLINE")
     st.divider()
     
@@ -263,7 +258,7 @@ with st.sidebar:
 
 
 # Header Principal
-st.markdown("<div class='header-title'>EQUANS <span>PERÚ - CENTRO DE CONTROL DE ROBÓTICA</span></div>", unsafe_allow_html=True)
+st.markdown("<div class='header-title'>EQ <span>PERÚ - CENTRO DE CONTROL DE ROBÓTICA</span></div>", unsafe_allow_html=True)
 st.markdown("<div class='sub-header'>Unidad de Robótica de Campo (RaaS EDGE) | Telemetría & Mantenimiento Predictivo</div>", unsafe_allow_html=True)
 
 # Pestañas Superiores
@@ -401,41 +396,57 @@ with tab_operaciones:
     st.markdown("### 🚁 PANEL DE DESPACHO & EVALUACIÓN PRE-VUELO (GO / NO-GO)")
     
     site_selected = st.selectbox("📍 Selecciona Zona de Trabajo / Despliegue:", [
+        "Lima (IPD Videna / Sede Central)",
         "Moquegua (Planta Solar Moquegua FV)",
         "Talara (Refinería & Costa Norte)",
-        "Ica (Planta Fotovoltaica Ica)",
-        "Lima (IPD Videna / Sede Central)"
+        "Ica (Planta Fotovoltaica Ica)"
     ])
 
     coords_map = {
+        "Lima (IPD Videna / Sede Central)": (-12.04, -77.03),
         "Moquegua (Planta Solar Moquegua FV)": (-17.15, -70.92),
         "Talara (Refinería & Costa Norte)": (-4.57, -81.27),
         "Ica (Planta Fotovoltaica Ica)": (-13.83, -76.25),
-        "Lima (IPD Videna / Sede Central)": (-12.04, -77.03)
     }
     lat_sel, lon_sel = coords_map[site_selected]
 
     kp_index = EnvironmentalDataService.get_noaa_kp_index()
     env_data = EnvironmentalDataService.get_weather_and_altitude(lat_sel, lon_sel)
 
+    # Evaluaciones de seguridad
     kp_safe = kp_index < 5.0
-    wind_safe = env_data["gusts_kmh"] < 35.0
+    gusts = env_data["gusts_kmh"]
     rain_safe = env_data["rain_mm"] == 0.0
 
-    go_flight = kp_safe and wind_safe and rain_safe
-
-    if go_flight:
-        st.success("✅ **CONDICIONES OPERATIVAS ÓPTIMAS (GO):** Es seguro realizar operaciones de vuelo con el Sherpa 1.5.")
+    # Lógica Dinámica de Riesgo para el Viento:
+    # < 35 km/h: Seguro (Verde)
+    # 35 - 45 km/h: Precaución/Moderado en periodos cortos (Naranja)
+    # >= 45 km/h: Crítico/Peligro (Rojo)
+    if gusts < 35.0:
+        wind_status = "Seguro"
+        wind_color = "#00d28d"  # Verde
+    elif gusts < 45.0:
+        wind_status = "Precaución (Ráfagas Moderadas)"
+        wind_color = "#f39c12"  # Naranja
     else:
-        st.error("⚠️ **ALERTA PRE-VUELO (NO-GO):** Condiciones no seguras detectadas. Revisar métricas en rojo antes de despegar.")
+        wind_status = "Peligro (Ráfagas Críticas)"
+        wind_color = "#e74c3c"  # Rojo
 
-    # Métricas Principales en Tiempo Real
+    # Estado General de Vuelo
+    if kp_safe and (gusts < 35.0) and rain_safe:
+        st.success("✅ **CONDICIONES OPERATIVAS ÓPTIMAS (GO):** Es seguro realizar operaciones de vuelo con el Sherpa 1.5.")
+    elif kp_safe and (gusts < 45.0) and rain_safe:
+        st.warning(f"⚠️ **PRECAUCIÓN PRE-VUELO (PRECAUCIÓN):** Ráfagas temporales de {gusts} km/h detectadas. Mantener supervisión si se autoriza el vuelo.")
+    else:
+        st.error("⚠️ **ALERTA PRE-VUELO (NO-GO):** Condiciones no seguras detectadas. Revisar métricas antes de despegar.")
+
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.metric("Índice Kp NOAA (Actual)", f"Kp {kp_index}", delta="Tranquilo" if kp_safe else "Interferencia GPS!")
         st.caption("• **Kp 0-3:** Normal | **Kp 4:** Inestable | **Kp ≥5:** NO VOLAR")
     with m2:
-        st.metric("Velocidad / Ráfagas Viento", f"{env_data['wind_kmh']} km/h", f"Ráfagas: {env_data['gusts_kmh']} km/h")
+        st.metric("Velocidad / Ráfagas Viento", f"{env_data['wind_kmh']} km/h", f"Ráfagas: {gusts} km/h")
+        st.markdown(f"<span style='color:{wind_color}; font-size:11px; font-weight:bold;'>↑ Ráfagas: {gusts} km/h ({wind_status})</span>", unsafe_allow_html=True)
         st.caption("• **Límite máximo ráfagas:** 35 km/h")
     with m3:
         st.metric("Temperatura / Lluvia", f"{env_data['temp']} °C", f"Lluvia: {env_data['rain_mm']} mm")
@@ -447,7 +458,6 @@ with tab_operaciones:
 
     st.divider()
 
-    # SECCIÓN DE PRONÓSTICO A FUTURO
     st.markdown("### 📅 PRONÓSTICO A FUTURO PARA PLANIFICACIÓN DE OPERACIONES")
     
     col_fut1, col_fut2 = st.columns([1.5, 2.5])
@@ -479,7 +489,6 @@ with tab_reportes:
     
     st.dataframe(df_reportes, use_container_width=True)
 
-# Pestañas complementarias
 with tab_mapa:
     st.info("Vista expandida de Geofencing y zonas de vuelo autónomo para el Sherpa 1.5 y flota de campo.")
 
