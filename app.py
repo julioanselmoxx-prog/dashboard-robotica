@@ -2,8 +2,8 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-import requests
-import io
+requests = __import__('requests')
+io = __import__('io')
 import config
 
 # ==========================================
@@ -186,14 +186,21 @@ class EnvironmentalDataService:
     def get_weather_and_altitude(lat, lon):
         weather_data = {"temp": 24.0, "wind_kmh": 14.5, "gusts_kmh": 22.0, "rain_mm": 0.0, "elevation_m": 1410}
         try:
-            w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,rain,wind_speed_10m,wind_gusts_10m"
+            w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,rain,wind_speed_10m,wind_gusts_10m&daily=precipitation_sum&timezone=auto"
             w_res = requests.get(w_url, timeout=3)
             if w_res.status_code == 200:
-                curr = w_res.json().get('current', {})
+                data_json = w_res.json()
+                curr = data_json.get('current', {})
                 weather_data["temp"] = curr.get("temperature_2m", 24.0)
                 weather_data["wind_kmh"] = curr.get("wind_speed_10m", 14.5)
                 weather_data["gusts_kmh"] = curr.get("wind_gusts_10m", 22.0)
-                weather_data["rain_mm"] = curr.get("rain", 0.0)
+                
+                daily = data_json.get('daily', {})
+                precip_sums = daily.get("precipitation_sum", [])
+                if precip_sums and len(precip_sums) > 0:
+                    weather_data["rain_mm"] = float(precip_sums[0])
+                else:
+                    weather_data["rain_mm"] = curr.get("rain", 0.0)
 
             e_url = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
             e_res = requests.get(e_url, timeout=3)
@@ -204,6 +211,37 @@ class EnvironmentalDataService:
             pass
 
         return weather_data
+
+    @staticmethod
+    def get_hourly_hazard_window(lat, lon):
+        """Analiza el pronóstico por hora de hoy para detectar las ventanas de riesgo por lluvia o ráfagas > 35 km/h"""
+        try:
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=precipitation,wind_gusts_10m&timezone=auto"
+            res = requests.get(url, timeout=3)
+            if res.status_code == 200:
+                data = res.json().get('hourly', {})
+                times = data.get('time', [])
+                precips = data.get('precipitation', [])
+                gusts = data.get('wind_gusts_10m', [])
+                
+                horas_peligro = []
+                for t, p, g in zip(times, precips, gusts):
+                    # Filtramos solo las horas del día de hoy
+                    hora_str = t.split("T")[1] if "T" in t else t
+                    if p > 0.1 or g >= 35.0:
+                        motivo = []
+                        if p > 0.1: motivo.append(f"Lluvia ({p}mm)")
+                        if g >= 35.0: motivo.append(f"Ráfagas {g}km/h")
+                        horas_peligro.append(f"{hora_str[:5]} hrs ({', '.join(motivo)})")
+                
+                if horas_peligro:
+                    # Agrupamos o mostramos las primeras horas críticas encontradas
+                    return f"⚠️ Horas con riesgo: {', '.join(horas_peligro[:4])}" + ("..." if len(horas_peligro) > 4 else "")
+                else:
+                    return "✅ Sin restricciones horarias (Todo el día óptimo)"
+        except Exception:
+            pass
+        return "ℹ️ Horario estándar recomendado (08:00 - 16:00 hrs)"
 
     @staticmethod
     def get_weather_forecast_7days(lat, lon):
@@ -413,26 +451,20 @@ with tab_operaciones:
     kp_index = EnvironmentalDataService.get_noaa_kp_index()
     env_data = EnvironmentalDataService.get_weather_and_altitude(lat_sel, lon_sel)
 
-    # Evaluaciones de seguridad
     kp_safe = kp_index < 5.0
     gusts = env_data["gusts_kmh"]
     rain_safe = env_data["rain_mm"] == 0.0
 
-    # Lógica Dinámica de Riesgo para el Viento:
-    # < 35 km/h: Seguro (Verde)
-    # 35 - 45 km/h: Precaución/Moderado en periodos cortos (Naranja)
-    # >= 45 km/h: Crítico/Peligro (Rojo)
     if gusts < 35.0:
         wind_status = "Seguro"
-        wind_color = "#00d28d"  # Verde
+        wind_color = "#00d28d"
     elif gusts < 45.0:
         wind_status = "Precaución (Ráfagas Moderadas)"
-        wind_color = "#f39c12"  # Naranja
+        wind_color = "#f39c12"
     else:
         wind_status = "Peligro (Ráfagas Críticas)"
-        wind_color = "#e74c3c"  # Rojo
+        wind_color = "#e74c3c"
 
-    # Estado General de Vuelo
     if kp_safe and (gusts < 35.0) and rain_safe:
         st.success("✅ **CONDICIONES OPERATIVAS ÓPTIMAS (GO):** Es seguro realizar operaciones de vuelo con el Sherpa 1.5.")
     elif kp_safe and (gusts < 45.0) and rain_safe:
@@ -473,6 +505,72 @@ with tab_operaciones:
         df_weather_7days = EnvironmentalDataService.get_weather_forecast_7days(lat_sel, lon_sel)
         st.dataframe(df_weather_7days, use_container_width=True, hide_index=True)
         st.caption("Evalúa Ráfagas de viento (< 35 km/h) y Lluvia (0.0 mm) para autorizar vuelos futuros.")
+
+    st.divider()
+
+    # ==========================================
+    # SECCIÓN: MONITOREO NACIONAL CON VENTANA HORARIA
+    # ==========================================
+    st.markdown("### 🗺️ MONITOREO NACIONAL DE RUTAS Y DEMOS (TODAS LAS CIUDADES DEL PERÚ)")
+    st.caption(f"Consulta en tiempo real del clima, acumulado diario, índice Kp actual ({kp_index}) y el **horario de ventanas con riesgo** para programar faenas seguras.")
+
+    ciudades_peru = [
+        {"Ciudad": "Amazonas (Chachapoyas)", "Lat": -6.22, "Lon": -77.87},
+        {"Ciudad": "Áncash (Huaraz)", "Lat": -9.53, "Lon": -77.53},
+        {"Ciudad": "Apurímac (Abancay)", "Lat": -13.63, "Lon": -72.87},
+        {"Ciudad": "Arequipa (Arequipa)", "Lat": -16.39, "Lon": -71.53},
+        {"Ciudad": "Ayacucho (Ayacucho)", "Lat": -13.15, "Lon": -74.22},
+        {"Ciudad": "Cajamarca (Cajamarca)", "Lat": -7.15, "Lon": -78.51},
+        {"Ciudad": "Callao (Callao)", "Lat": -12.05, "Lon": -77.13},
+        {"Ciudad": "Cusco (Cusco)", "Lat": -13.51, "Lon": -71.97},
+        {"Ciudad": "Huancavelica (Huancavelica)", "Lat": -12.78, "Lon": -74.97},
+        {"Ciudad": "Huánuco (Huánuco)", "Lat": -9.93, "Lon": -76.24},
+        {"Ciudad": "Ica (Ica)", "Lat": -14.06, "Lon": -75.72},
+        {"Ciudad": "Junín (Huancayo)", "Lat": -12.06, "Lon": -75.21},
+        {"Ciudad": "La Libertad (Trujillo)", "Lat": -8.11, "Lon": -79.02},
+        {"Ciudad": "Lambayeque (Chiclayo)", "Lat": -6.76, "Lon": -79.84},
+        {"Ciudad": "Lima (Lima Metropolitana)", "Lat": -12.04, "Lon": -77.03},
+        {"Ciudad": "Loreto (Iquitos)", "Lat": -3.74, "Lon": -73.25},
+        {"Ciudad": "Madre de Dios (Puerto Maldonado)", "Lat": -12.59, "Lon": -69.18},
+        {"Ciudad": "Moquegua (Moquegua)", "Lat": -17.19, "Lon": -70.93},
+        {"Ciudad": "Pasco (Cerro de Pasco)", "Lat": -10.68, "Lon": -76.25},
+        {"Ciudad": "Piura (Piura)", "Lat": -5.19, "Lon": -80.63},
+        {"Ciudad": "Puno (Puno)", "Lat": -15.84, "Lon": -70.02},
+        {"Ciudad": "San Martín (Moyobamba)", "Lat": -6.03, "Lon": -76.97},
+        {"Ciudad": "Tacna (Tacna)", "Lat": -18.01, "Lon": -70.25},
+        {"Ciudad": "Tumbes (Tumbes)", "Lat": -3.56, "Lon": -80.45},
+        {"Ciudad": "Ucayali (Pucallpa)", "Lat": -8.37, "Lon": -74.55},
+    ]
+
+    res_demo = []
+    for c in ciudades_peru:
+        w_info = EnvironmentalDataService.get_weather_and_altitude(c["Lat"], c["Lon"])
+        g_val = w_info["gusts_kmh"]
+        r_val = w_info["rain_mm"]
+        
+        # Obtenemos la ventana horaria detallada de riesgos para el día
+        horario_riesgo = EnvironmentalDataService.get_hourly_hazard_window(c["Lat"], c["Lon"])
+        
+        if kp_safe and g_val < 35.0 and r_val == 0.0:
+            eval_demo = "✅ Óptimo para Demo"
+        elif kp_safe and g_val < 45.0 and r_val <= 0.5:
+            eval_demo = "⚠️ Precaución (Viento/Lluvia Leve)"
+        else:
+            eval_demo = "❌ No Recomendado (Lluvia o Viento Alto)"
+
+        res_demo.append({
+            "Ciudad / Región": c["Ciudad"],
+            "Kp Actual": f"Kp {kp_index}",
+            "Temp (°C)": w_info["temp"],
+            "Viento (km/h)": w_info["wind_kmh"],
+            "Ráfagas (km/h)": g_val,
+            "Lluvia Acum. Día (mm)": r_val,
+            "Horario de Riesgo / Ventana Segura": horario_riesgo,
+            "Evaluación Demo": eval_demo
+        })
+
+    df_demo_nacional = pd.DataFrame(res_demo)
+    st.dataframe(df_demo_nacional, use_container_width=True, hide_index=True)
 
 
 # ==========================================
