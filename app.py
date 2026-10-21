@@ -148,10 +148,10 @@ class TelemetryDataService:
             pass
 
         return pd.DataFrame([
-            {"unit": "Drone 04 (Térmico)", "type": "RPAS", "site": "Moquegua", "battery": 92, "temp_c": 45, "datalink": "Green", "lat": -17.15, "lon": -70.92, "status": "Activo"},
-            {"unit": "Drone 09 (Sherpa)", "type": "RPAS", "site": "Ica", "battery": 95, "temp_c": 45, "datalink": "Green", "lat": -13.83, "lon": -76.25, "status": "Activo"},
-            {"unit": "Robot 07 (DT-UT)", "type": "Terrestre", "site": "Talara", "battery": 98, "temp_c": 46, "datalink": "Green", "lat": -4.57, "lon": -81.27, "status": "Activo"},
-            {"unit": "Drone 07 (RPAS)", "type": "RPAS", "site": "Lima", "battery": 35, "temp_c": 52, "datalink": "Amber", "lat": -12.04, "lon": -77.03, "status": "Mantenimiento"},
+            {"unit": "Drone Sherpa 1.5", "type": "RPAS Hexacóptero", "site": "Moquegua", "battery": 92, "temp_c": 42, "datalink": "Green", "flight_time_min": 17, "lat": -17.15, "lon": -70.92, "status": "Activo"},
+            {"unit": "Drone 04 (Térmico)", "type": "RPAS Cuadricóptero", "site": "Ica", "battery": 95, "temp_c": 45, "datalink": "Green", "flight_time_min": 22, "lat": -13.83, "lon": -76.25, "status": "Activo"},
+            {"unit": "Robot 07 (DT-UT)", "type": "Terrestre", "site": "Talara", "battery": 98, "temp_c": 46, "datalink": "Green", "flight_time_min": 180, "lat": -4.57, "lon": -81.27, "status": "Activo"},
+            {"unit": "Drone 07 (RPAS)", "type": "RPAS", "site": "Lima", "battery": 35, "temp_c": 52, "datalink": "Amber", "flight_time_min": 12, "lat": -12.04, "lon": -77.03, "status": "Mantenimiento"},
         ])
 
 
@@ -170,7 +170,7 @@ with st.sidebar:
     
     st.divider()
     st.markdown("📍 **DESPLIEGUES ACTIVOS**")
-    st.caption("• Moquegua (Planta Solar)")
+    st.caption("• Moquegua (Planta Solar - Sherpa 1.5)")
     st.caption("• Talara (Infraestructura Industrial)")
     st.caption("• IPD Videna (Sede Lima)")
 
@@ -179,7 +179,7 @@ with st.sidebar:
 st.markdown("<div class='header-title'>EQUANS <span>PERÚ - CENTRO DE CONTROL DE ROBÓTICA</span></div>", unsafe_allow_html=True)
 st.markdown("<div class='sub-header'>Unidad de Robótica de Campo (RaaS EDGE) | Telemetría & Mantenimiento Predictivo</div>", unsafe_allow_html=True)
 
-# Pestañas Superiores Exactas a las Imágenes
+# Pestañas Superiores
 tab_resumen, tab_mapa, tab_diagnostico, tab_operaciones, tab_reportes, tab_ajustes = st.tabs([
     "RESUMEN", "MAPA DE FLOTA", "DIAGNÓSTICO", "OPERACIONES", "REPORTES", "AJUSTES"
 ])
@@ -202,7 +202,7 @@ with tab_resumen:
                 <div class="tech-card">
                     <b>{row['unit']}</b> <span class="{badge}">{row['status']}</span><br>
                     <small style="color:#5c708a;">📍 {row['site']} | Datalink: {row['datalink']}</small><br>
-                    🔋 <b>{row['battery']}%</b> | 🌡️ <b>{row['temp_c']}°C</b>
+                    🔋 <b>{row['battery']}%</b> | ⏱️ <b>{row['flight_time_min']} min aut.</b> | 🌡️ <b>{row['temp_c']}°C</b>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -213,28 +213,29 @@ with tab_resumen:
             lat="lat",
             lon="lon",
             hover_name="unit",
-            hover_data=["site", "battery", "status"],
+            hover_data=["site", "battery", "flight_time_min", "status"],
             color="status",
             color_discrete_map={"Activo": "#00d28d", "Mantenimiento": "#f39c12"},
-            zoom=4.3,
+            zoom=4.6,
             height=430
         )
         fig_map.update_layout(
             margin={"r":0,"t":0,"l":0,"b":0},
-            map_style="carto-darkmatter"
+            map_style="carto-darkmatter",
+            map_center={"lat": -9.19, "lon": -75.01}
         )
         st.plotly_chart(fig_map, use_container_width=True)
 
     with c3:
         st.markdown("##### 📊 GARANTÍAS DE DESEMPEÑO (SLAs)")
         st.metric("% Tiempo Actividad Solar", "96%", "+2%")
-        st.metric("Cobertura Inspección", "65%", "-1%")
+        st.metric("Autonomía Sherpa (4J/8Bat)", "68 min total", "Rotación 100%")
         st.metric("Integridad de Activos", "96%", "0%")
 
         st.markdown("<br><b>🚀 PIPELINE TECNOLÓGICO</b>", unsafe_allow_html=True)
         st.caption("1. Limpieza Solar Híbrida (90%)")
         st.progress(0.90)
-        st.caption("2. Termografía Aérea (85%)")
+        st.caption("2. Termografía Aérea Sherpa 1.5 (85%)")
         st.progress(0.85)
         st.caption("3. UT de Espesor (70%)")
         st.progress(0.70)
@@ -244,36 +245,70 @@ with tab_resumen:
 # 5. PESTAÑA 3: DIAGNÓSTICO PREDICTIVO
 # ==========================================
 with tab_diagnostico:
-    st.markdown("### 🔬 DIAGNÓSTICO TÉCNICO AVANZADO DE FLOTA")
-    col_diag1, col_diag2 = st.columns([2, 2])
+    st.markdown("### 🔬 DIAGNÓSTICO TÉCNICO AVANZADO: SHERPA 1.5 & FLOTA")
+    
+    # Banner Técnico de Arquitectura Sherpa 1.5
+    st.markdown("""
+        <div class="tech-card" style="border-left: 4px solid #3498db;">
+            <b>🚁 ESPECIFICACIÓN TÉCNICA Y MATRIZ DE ENERGÍA - LUCID BOTS SHERPA 1.5</b><br>
+            <small style="color:#a0aec0;">
+            • Configuración: <b>Hexacóptero (6 Motores/Rotores Brushless)</b> | Payload: Limpieza / Lavado Industrial de Páneles y Fachadas.<br>
+            • Banco de Baterías: <b>4 Juegos Activos (8 Baterías Tattu 12S 10,000mAh en total)</b> | Operación dual por vuelo (2 Baterías = 1 Juego).<br>
+            • Autonomía por Juego: <b>15 - 18 min de vuelo efectivo</b> | Tiempo de Carga Completo: <b>45 min por Juego (Cargador TA3200)</b>.
+            </small>
+        </div>
+    """, unsafe_allow_html=True)
+
+    col_diag1, col_diag2 = st.columns([2.2, 1.8])
 
     with col_diag1:
-        st.markdown("##### 🔋 SALUD DE BATERÍA POR CELDA (Drone Sherpa 1.5)")
-        celdas = [f"Cel {i}" for i in range(1, 13)]
-        voltajes = [32.9, 32.6, 32.8, 27.8, 35.7, 35.6, 35.5, 33.5, 35.4, 35.6, 33.6, 32.0]
+        st.markdown("##### 🔋 ESTADO DE SALUD & CICLOS DE VIDA (4 JUEGOS / 8 BATERÍAS DUALES)")
         
+        # Datos de los 4 juegos de baterías (8 baterías físicas)
+        df_batteries = pd.DataFrame([
+            {"Juego": "Juego 1 (Bat 1A - 1B)", "Ciclos_Usados": 82, "SoH_Health": 96, "Estado": "En Uso (Dron)", "Voltaje_V": 44.2},
+            {"Juego": "Juego 2 (Bat 2A - 2B)", "Ciclos_Usados": 145, "SoH_Health": 91, "Estado": "Cargado (Listo)", "Voltaje_V": 44.4},
+            {"Juego": "Juego 3 (Bat 3A - 3B)", "Ciclos_Usados": 210, "SoH_Health": 84, "Estado": "En Carga (TA3200)", "Voltaje_V": 41.8},
+            {"Juego": "Juego 4 (Bat 4A - 4B)", "Ciclos_Usados": 295, "SoH_Health": 78, "Estado": "Revisión / Balanceo", "Voltaje_V": 39.5},
+        ])
+
         fig_battery = px.bar(
-            x=voltajes, y=celdas, orientation='h',
-            labels={'x': 'Voltaje / Temperatura', 'y': 'Celdas'},
-            color=voltajes, color_continuous_scale='Greens'
+            df_batteries,
+            x="SoH_Health",
+            y="Juego",
+            orientation='h',
+            text="Ciclos_Usados",
+            color="SoH_Health",
+            color_continuous_scale="RdYlGn",
+            labels={"SoH_Health": "Salud de Batería (%)", "Juego": "Juegos de Baterías (12S Dual)"},
+            range_x=[0, 100]
         )
-        fig_battery.update_layout(template="plotly_dark", height=320, margin=dict(l=10, r=10, t=30, b=10))
+        fig_battery.update_traces(texttemplate='%{text} ciclos', textposition='inside')
+        fig_battery.update_layout(template="plotly_dark", height=300, margin=dict(l=10, r=10, t=30, b=10))
         st.plotly_chart(fig_battery, use_container_width=True)
 
     with col_diag2:
-        st.markdown("##### 📈 ANÁLISIS PREDICTIVO DE FALLAS (MOTORES & VIBRACIÓN)")
+        st.markdown("##### ⚙️ DIAGNÓSTICO DE TELEMETRÍA: 6 ROTORES / MOTORES (SHERPA 1.5)")
         
-        fig_predictive = go.Figure()
-        fig_predictive.add_trace(go.Scatter(x=[0, 1000, 2000, 3000], y=[100, 98, 95, 90], mode='lines+markers', name='Salud de Batería (SoH)', line=dict(color='#00d28d')))
-        fig_predictive.add_trace(go.Scatter(x=[0, 1000, 2000, 3000], y=[5, 12, 28, 45], mode='lines+markers', name='Vibración Motores', line=dict(color='#e74c3c')))
-        fig_predictive.update_layout(
-            template="plotly_dark",
-            height=320,
-            margin=dict(l=10, r=10, t=30, b=10)
-        )
-        st.plotly_chart(fig_predictive, use_container_width=True)
+        # Telemetría de los 6 motores del Hexacóptero
+        motores = [f"Motor {i}" for i in range(1, 7)]
+        temp_motores = [42, 44, 43, 48, 43, 42]
+        vibra_mms = [1.2, 1.4, 1.3, 3.8, 1.2, 1.1] # Motor 4 en alerta preventiva
 
-    st.markdown("##### 📋 BITÁCORA MANUAL EN SHAREPOINT (Robots Limpieza Piscina / Pisos)")
+        fig_motors = go.Figure()
+        fig_motors.add_trace(go.Bar(x=motores, y=temp_motores, name='Temp (°C)', marker_color='#00d28d'))
+        fig_motors.add_trace(go.Scatter(x=motores, y=vibra_mms, name='Vibración (mm/s)', yaxis='y2', line=dict(color='#e74c3c', width=3)))
+        
+        fig_motors.update_layout(
+            template="plotly_dark",
+            height=300,
+            margin=dict(l=10, r=10, t=30, b=10),
+            yaxis=dict(title='Temperatura °C'),
+            yaxis2=dict(title='Vibración mm/s', overlaying='y', side='right')
+        )
+        st.plotly_chart(fig_motors, use_container_width=True)
+
+    st.markdown("##### 📋 BITÁCORA MANUAL EN SHAREPOINT (Registro de Ciclos & Mantenimiento Operativo)")
     st.dataframe(df_sharepoint, use_container_width=True)
 
 
@@ -284,16 +319,16 @@ with tab_reportes:
     st.markdown("### 📋 REGISTRO DE MISIONES Y RESULTADOS OPERATIVOS")
     
     df_reportes = pd.DataFrame([
-        {"Misión ID": "M-001", "Fecha": "22/10/2026", "Unidad": "Drone 04", "Ubicación": "Moquegua", "Tarea": "Inspección Térmica", "Tiempo (min)": 23, "Estado": "Exitoso"},
-        {"Misión ID": "M-002", "Fecha": "22/10/2026", "Unidad": "Robot 07", "Ubicación": "Talara", "Tarea": "Limpieza Híbrida", "Tiempo (min)": 40, "Estado": "Exitoso"},
-        {"Misión ID": "M-003", "Fecha": "23/10/2026", "Unidad": "Robot 05", "Ubicación": "IPD Videna", "Tarea": "Limpieza Piscina", "Tiempo (min)": 120, "Estado": "Observado"},
+        {"Misión ID": "M-001", "Fecha": "22/10/2026", "Unidad": "Drone Sherpa 1.5", "Ubicación": "Moquegua", "Tarea": "Limpieza Fachadas / Páneles", "Juego Batería": "Juego 1", "Tiempo Vuelo (min)": 17, "Estado": "Exitoso"},
+        {"Misión ID": "M-002", "Fecha": "22/10/2026", "Unidad": "Robot 07", "Ubicación": "Talara", "Tarea": "Limpieza Híbrida", "Juego Batería": "Interna N/A", "Tiempo Vuelo (min)": 40, "Estado": "Exitoso"},
+        {"Misión ID": "M-003", "Fecha": "23/10/2026", "Unidad": "Drone Sherpa 1.5", "Ubicación": "Moquegua", "Tarea": "Inspección Térmica Hexacóptero", "Juego Batería": "Juego 2", "Tiempo Vuelo (min)": 16, "Estado": "Exitoso"},
     ])
     
     st.dataframe(df_reportes, use_container_width=True)
 
 # Pestañas complementarias
 with tab_mapa:
-    st.info("Vista expandida de Geofencing y zonas de vuelo autónomo.")
+    st.info("Vista expandida de Geofencing y zonas de vuelo autónomo para el Sherpa 1.5 y flota de campo.")
 
 with tab_operaciones:
     st.info("Panel de despacho y comandería en tiempo real para unidades de campo.")
